@@ -1,0 +1,491 @@
+#include <iostream>
+#include <string.h>
+#include <math.h>
+#include <vector>
+#include <algorithm>
+#include <time.h>
+using namespace std;
+#define MAX 300 // number of jobs
+#define number_machine 2 // number of machines 
+#include <chrono>  // Include chrono library
+//#include <omp.h>
+using namespace std;
+using namespace std::chrono;  // Use chrono namespace
+#include <random>
+#include <tuple>
+
+// Definitions of structures
+struct job
+{
+  int job_id;
+  int job_processing;
+  int job_set_up;
+};
+
+struct Schedule
+{
+  int job_id;
+  int job_machine_number;
+  int job_start_time;
+  int job_end_load;
+  int job_end_time;
+};
+
+// function to check if the job is scheduled
+int job_in_Schedule (Schedule Optimal_shedule[MAX], job F)
+{
+  int i;
+  bool trouve = 0;
+  for (i = 0; i < MAX; i++)
+    {
+      if (Optimal_shedule[i].job_id == F.job_id)
+    {
+      trouve = 1;
+      break;
+    }
+    }
+  return trouve;
+}
+
+// function used to calculate the idle time 
+int Calcul_IT (int a, int b)
+{
+  if (a > b)
+    return 0;
+  else
+    return (b - a);
+}
+
+// function to detect the available machine
+int Machine_Min (int T[number_machine])
+{
+  int Min = T[0], j, indice_min = 0;
+  for (j = 0; j < number_machine; j++)
+    {
+      if (T[j] < Min)
+    {
+      Min = T[j];
+      indice_min = j;
+    }
+    }
+  return indice_min;
+}
+
+// function to Know the minimal completion time
+int Ct_Min(int T[number_machine])
+{
+  int Min = T[0], j;
+  for (j = 0; j < number_machine; j++)
+    {
+      if (T[j] < Min)
+      Min = T[j];
+    }
+  return Min;
+}
+
+// function to calculate the difference between completion times
+int Min_diff (int T[MAX])
+{
+  int Diff[MAX];
+  for (int i = 0; i < MAX; i++)
+    {
+      Diff[i] = T[i] - Ct_Min (T);
+    }
+  for (int i = 0; i < MAX; i++)
+    {
+      if (Diff[i] == 0)
+      Diff[i] = 1000;
+    }
+  return Ct_Min(Diff);
+}
+
+// fucntion used to verify one heuristic condition 
+int Min_diff_val (int T[MAX])
+{
+  int V, min;
+  for (int i = 0; i < MAX; i++)
+    {
+      if (T[i] == 0)
+      continue;
+      else
+    {
+      V = T[i];
+      break;
+    }
+    }
+  for (int i = 0; i < MAX; i++)
+    {
+      min = V;
+      if (T[i] < min && T[i] != 0)
+      min = T[i];
+    }
+  return min;
+}
+
+// function to identify the job with minimal set-up
+int indice_min_setup (job T[MAX])
+{
+  int indice_min = 0, min_setup = T[0].job_set_up;
+  for (int i = 0; i < MAX; i++)
+    {
+      if (T[i].job_set_up < min_setup)
+    {
+      min_setup = T[i].job_set_up;
+      indice_min = i;
+    }
+    }
+  return indice_min;
+}
+
+// function used to make the first order of jobs in list scheduling
+bool compareJobs (const job & a, const job & b) 
+{ 
+    if (a.job_set_up == b.job_set_up)
+    {// If setup times are equal, compare by processing times in non-decreasing order
+    return a.job_processing < b.job_processing;
+    }
+    // Otherwise, sort by setup times in non-increasing order
+    return a.job_set_up > b.job_set_up;
+}
+
+///function for jobs scheduling and objective function calculation
+int GenerateSchedule(job T[MAX]) {
+    int L_F = 0; // Initial value for L_F
+    int IT = 0;  // Idle time
+    Schedule Optimal_shedule[MAX];
+    int ct[number_machine] = {0}; // Initialize ct array to 0
+    //std::sort(T, T+ MAX, compareJobs); used in main() function 
+    int s = indice_min_setup(T);
+    job F = T[s];
+    L_F = F.job_processing; // Set L_F to the processing time of the first job
+    // First scheduled job
+    Optimal_shedule[0].job_id = F.job_id;
+    Optimal_shedule[0].job_machine_number = Machine_Min(ct) + 1;
+    Optimal_shedule[0].job_start_time = 0;
+    Optimal_shedule[0].job_end_load = F.job_set_up;
+    Optimal_shedule[0].job_end_time = F.job_set_up + F.job_processing;
+    ct[0] = Optimal_shedule[0].job_end_time;
+    IT = 0;
+    int k = 1;
+
+    for(int i=1; i<MAX;i++){
+     Optimal_shedule[i].job_id=7777; // to avoid random initialization
+     }
+
+    while (k < MAX) {
+        bool jobScheduled = false; // Track whether a job was scheduled
+        for (int j = 0; j < MAX; j++) {
+            if (!job_in_Schedule(Optimal_shedule, T[j]) &&
+                (T[j].job_set_up <= L_F) &&
+                (T[j].job_set_up + T[j].job_processing != L_F)) {
+                int h = Machine_Min(ct);
+                Optimal_shedule[k].job_id = T[j].job_id;
+                Optimal_shedule[k].job_machine_number = h + 1;
+                Optimal_shedule[k].job_start_time = std::max(Ct_Min(ct), Optimal_shedule[k - 1].job_end_load);
+                IT += Calcul_IT(Ct_Min(ct), Optimal_shedule[k - 1].job_end_load);
+                Optimal_shedule[k].job_end_load = Optimal_shedule[k].job_start_time + T[j].job_set_up;
+                Optimal_shedule[k].job_end_time = Optimal_shedule[k].job_end_load + T[j].job_processing;
+                ct[h] = Optimal_shedule[k].job_end_time;
+
+                if (k < number_machine - 1) {
+                    L_F = Min_diff_val(ct) - Optimal_shedule[k].job_end_load;
+                } else {
+                    L_F = Min_diff(ct);
+                }
+                jobScheduled = true; // A job was scheduled, exit the loop
+                break;
+            }
+        }
+
+        if (!jobScheduled) {
+            for (int j = MAX-1; j>=0 ; j--) {
+                if (!job_in_Schedule(Optimal_shedule, T[j]) 
+                   ) {
+                    int h = Machine_Min(ct);
+                    Optimal_shedule[k].job_id = T[j].job_id;
+                    Optimal_shedule[k].job_machine_number = h + 1;
+                    Optimal_shedule[k].job_start_time = std::max(Ct_Min(ct), Optimal_shedule[k - 1].job_end_load);
+                    IT += Calcul_IT(Ct_Min(ct), Optimal_shedule[k - 1].job_end_load);
+                    Optimal_shedule[k].job_end_load = Optimal_shedule[k].job_start_time + T[j].job_set_up;
+                    Optimal_shedule[k].job_end_time = Optimal_shedule[k].job_end_load + T[j].job_processing;
+                    ct[h] = Optimal_shedule[k].job_end_time;
+                    if (k < number_machine - 1) {
+                        L_F = Min_diff_val(ct) - Optimal_shedule[k].job_end_load;
+                    } else {
+                        L_F = Min_diff(ct);
+                    }
+                    jobScheduled = true; // A job was scheduled, exit the loop
+                    break;
+                }
+            }
+        }
+        k++;
+    }
+    return IT;
+}
+
+// function used to generate random values
+int Random (int a, int b) 
+{
+    return (a+(rand()%((b-a)+1)));
+}
+
+// function used to swap between two jobs
+void swap(job *x, job *y) {
+    job temp = *x;
+    *x = *y;
+    *y = temp;
+}
+
+job* GenerateNeighbor(job Q[MAX]){
+   //Searching for job groups with equal setup times
+    std::vector<std::vector<job>> jobGroups;
+    for (int i = 0; i < MAX; i++) {
+        int groupStart = i;
+        int groupSize = 1;
+
+        while (i < MAX - 1 && Q[i].job_set_up == Q[i + 1].job_set_up) {
+            i++;
+            groupSize++;
+        }
+
+        std::vector<job> group(Q + groupStart, Q + groupStart + groupSize);
+        jobGroups.push_back(group);
+    }
+   //Random exchange of two jobs belonging to the same group
+   std::random_device rd;
+   std::mt19937 gen(rd());
+   std::uniform_int_distribution<int> groupDist(0, jobGroups.size() - 1);
+
+   int groupIndex;
+   do {
+       groupIndex = groupDist(gen);
+    } while (jobGroups[groupIndex].size() == 1);
+
+    int jobIndex1;
+    int jobIndex2;
+
+    if (jobGroups[groupIndex].size() >= 2) {
+        do {
+           jobIndex1 = rand() % jobGroups[groupIndex].size();
+        do {
+            jobIndex2 = rand() % jobGroups[groupIndex].size();
+        } while (jobIndex2 == jobIndex1);
+
+    } while (jobIndex2 == jobIndex1);
+
+    std::swap(jobGroups[groupIndex][jobIndex1], jobGroups[groupIndex][jobIndex2]);
+    }
+
+    //Display of jobs after the exchange
+    int k=0;
+    job H[MAX];
+    for (const std::vector<job> &group : jobGroups) {
+        for (const job &job : group) {
+        H[k].job_id=job.job_id;
+        H[k].job_processing=job.job_processing;
+        H[k].job_set_up=job.job_set_up;
+        k++;
+        }
+    }
+    job* result = new job[MAX];
+    std::copy(H, H + MAX, result);
+    return result;
+    }
+
+
+bool IsTabu(const job neighbor[], const job TabuList[][MAX], int TabuSize) {
+    for (int i = 0; i < TabuSize; i++) {
+        bool identical = true; // An indicator to determine if neighbors are identical
+        for (int j = 0; j < MAX; j++) {
+            if (neighbor[j].job_id != TabuList[i][j].job_id ||
+                neighbor[j].job_processing != TabuList[i][j].job_processing ||
+                neighbor[j].job_set_up != TabuList[i][j].job_set_up) {
+                identical = false;
+                break; // Exit the loop if an attribute is different
+            }
+        }
+
+        if (identical) {
+            return true; // The neighbors are identical, hence the neighbor is taboo
+        }
+    }
+    return false; //No identical neighbor in the taboo list
+}
+
+bool Similar_set_up(job Q[MAX]) {
+    for (int i = 0; i < MAX; i++) {
+        for (int j = i + 1; j < MAX; j++) {
+            if (Q[i].job_set_up == Q[j].job_set_up) {
+                return true; // As soon as a similar pair is found, return true.
+            }
+        }
+    }
+    return false; //If no similar pair is found, return false.
+}
+
+
+std::pair<job*, double> tabu(job* Q, double timeLimitInSeconds) {
+    job* neighbor = new job[MAX];
+    job* BestOrder = new job[MAX];
+    int iteration = 0;
+    //int lastImprovementIteration = 0;
+    //const int maxIterations = 500; // Similar to GVNS, though time is the main condition
+    const int NumLastNeighbors = 10; // Number of last neighbors to keep
+    //job LastTabuNeighbors[NumLastNeighbors][MAX] = {}; // Initialize Tabu structures
+    int LastTabuIndex = 0;
+    int TabuSize = 10;
+    job TabuList[10][MAX] = {}; // Initialize Tabu structures
+    //int ok = 0;
+
+    memcpy(BestOrder, Q, MAX * sizeof(job)); // Initialize BestOrder with Q
+    int s = indice_min_setup(Q);
+    int minSetupTime = Q[s].job_set_up;
+    //std::sort(Q, Q + MAX, compareJobs); // Initial sorting
+    int BestSumIT = GenerateSchedule(Q); // Generate initial schedule
+
+    // Define CPU time variables
+    std::chrono::high_resolution_clock::time_point startTime, endTime;
+    std::chrono::duration<double, std::milli> elapsedTime;
+    std::chrono::high_resolution_clock::time_point endTimeTabu;
+    std::chrono::duration<double, std::milli> elapsedTimeTabu;
+    double elapsedTimeInSeconds = 0;
+    double elapsedTimeTabuInSeconds = 0;
+    startTime = std::chrono::high_resolution_clock::now(); // Start measuring Tabu CPU time
+
+
+    do {
+        // check if their are some similars set-ups
+        if (!Similar_set_up(Q)) {
+            memcpy(BestOrder, Q, MAX * sizeof(job));
+            break;
+        }
+
+        neighbor = GenerateNeighbor(Q);
+        iteration++;
+
+        // Calculation of the sum of interference times for neighbor
+        int NewSumIT = GenerateSchedule(neighbor);
+        int Delta = NewSumIT - BestSumIT;
+
+        if (!IsTabu(neighbor, TabuList, TabuSize)) {
+            if (Delta < 0) {
+                //ok = 1;
+                BestSumIT = NewSumIT;
+                printf("BestSumIT=%d\n",BestSumIT);
+                memcpy(BestOrder, neighbor, MAX * sizeof(job));
+                // Update elapsed time after improvement
+                endTime = std::chrono::high_resolution_clock::now();
+                // Utiliser des microsecondes pour une meilleure précision
+                elapsedTime = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime);
+                elapsedTimeInSeconds = elapsedTime.count() / 1e6; // Convertir en secondes avec une précision en microsecondes
+                if (BestSumIT == minSetupTime) {
+                    delete[] neighbor;
+                    return std::make_pair(BestOrder, elapsedTimeInSeconds);
+                }
+            }
+            memcpy(TabuList[iteration % TabuSize], neighbor, MAX * sizeof(job));
+            LastTabuIndex = (LastTabuIndex + 1) % NumLastNeighbors; // Circularly move the index
+        }
+
+        endTimeTabu = std::chrono::high_resolution_clock::now();
+        elapsedTimeTabu = std::chrono::duration_cast<std::chrono::milliseconds>(endTimeTabu - startTime);
+        elapsedTimeTabuInSeconds = elapsedTimeTabu.count() / 1000.0;
+
+        // Break if the time limit is exceeded
+        if (elapsedTimeTabuInSeconds >= timeLimitInSeconds) {
+            break;
+        }
+
+    } while (true);
+
+    delete[] neighbor; // Free the allocated memory
+
+    return std::make_pair(BestOrder, elapsedTimeInSeconds);
+}
+
+
+
+int main() {
+    FILE* fichier = NULL;
+    if ((fichier = fopen("test.txt", "a")) == NULL) {
+        fprintf(stderr, "FILE ERROR...\n");
+        exit(EXIT_FAILURE);
+    }
+    fprintf(fichier, "%d\t%d\t%g\n", MAX, number_machine, 0.7);
+    const int num_instances = 5; // Number of different instances to run
+    const int num_experiments = 10; // Number of experiments per instance
+    double timeLimitInSeconds = 20.0;  // Example time limit for tabu search
+
+    int processing_values[5][MAX] = {
+    //{},
+    //{},
+    //{},
+    //{},
+    //{},
+    
+};  
+
+    int setup_values[5][MAX] = {
+    //{},
+    //{},
+    //{},
+    //{},
+    //{},
+        
+    };
+
+   
+
+
+
+
+
+    for (int inst = 0; inst < num_instances; inst++) {
+        double totalElapsedTime = 0;
+        int totalIT = 0;
+        int bestIT = 3000;
+
+        for (int exp = 0; exp < num_experiments; exp++) {
+            job Q[MAX];
+
+            // Initialize the job data for this instance
+            for (int i = 0; i < MAX; i++) {
+                Q[i].job_id = i;
+                Q[i].job_processing = processing_values[inst][i];
+                Q[i].job_set_up = setup_values[inst][i];
+            }
+            std::sort(Q, Q + MAX, compareJobs);
+            srand(time(nullptr)); // Reset random seed for each experiment
+            //Run the tabu search for the given time limit
+            auto result = tabu(Q, timeLimitInSeconds);
+            job* BestOrder = result.first;
+            double elapsedTimeInSeconds = result.second;
+
+            int BestSumIT = GenerateSchedule(BestOrder);
+            totalIT += BestSumIT;
+            totalElapsedTime += elapsedTimeInSeconds;
+            if (BestSumIT < bestIT) bestIT = BestSumIT;
+
+            fprintf(fichier, "Instance %d, Experiment %d: BestSumIT = %d, CPU = %f\n", inst + 1, exp + 1, BestSumIT, elapsedTimeInSeconds);
+            delete[] BestOrder;
+        }
+
+        double avgIT = static_cast<double>(totalIT) / num_experiments;
+        double avgElapsedTime = totalElapsedTime / num_experiments;
+
+        fprintf(fichier, "Instance %d Results:\n", inst + 1);
+        fprintf(fichier, "Best IT = %d\n", bestIT);
+        fprintf(fichier, "Average IT = %f\n", avgIT);
+        fprintf(fichier, "Average CPU time = %f seconds\n", avgElapsedTime);
+
+        printf("Instance %d Results:\n", inst + 1);
+        printf("Best IT = %d\n", bestIT);
+        printf("Average IT = %f\n", avgIT);
+        printf("Average CPU time = %f seconds\n", avgElapsedTime);
+        printf("----------------------------------\n");
+    }
+
+    fclose(fichier);
+    return 0;
+}
